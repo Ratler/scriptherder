@@ -50,6 +50,12 @@ import logging.handlers
 import argparse
 import subprocess
 import ConfigParser
+try:
+    from hypchat import HypChat
+    import urllib
+    have_hipchat=True
+except ImportError:
+    have_hipchat=False
 
 _defaults = {'debug': False,
              'syslog': False,
@@ -641,6 +647,15 @@ def parse_args(defaults):
                         help = 'Job name',
                         metavar = 'NAME',
                         )
+    if have_hipchat:
+        parser.add_argument('-H', '--hipchat',
+                            dest = 'hipchat',
+                            help = 'HipChat token (enabled hipchat notification)',
+                            )
+        parser.add_argument('-r', '--room',
+                            dest = 'hipchat_room',
+                            help = 'HipChat room to send notifications to',
+                            )
 
     parser.add_argument('cmd',
                         nargs = '*', default = [],
@@ -666,6 +681,8 @@ def mode_wrap(args, logger):
     logger.debug("Finished, exit status {!r}".format(job.exit_status))
     logger.debug("Job output:\n{!s}".format(job.output))
     job.save_to_file(args.datadir, logger)
+    if have_hipchat:
+        hipchat_notification(args, logger, job)
     return True
 
 
@@ -775,6 +792,23 @@ def mode_lastlog(args, logger, fail_status=False):
             print('No script output found for {!s} with fail_status={!s}'.format(', '.join(jobs_by_name.keys()), fail_status))
     else:
         print "No jobs found"
+
+
+def hipchat_notification(args, logger, job):
+    if args.hipchat and args.hipchat_room:
+        hc = HypChat(args.hipchat)
+        room = hc.get_room(args.hipchat_room)
+        color = 'green'
+        if job.exit_status != 0:
+            color = 'red'
+        
+        if job.output_filename:
+            message = 'Script output for "%s" with exit status "%s":<br><code>%s</code>' % (job.name, job.exit_status, job.output)
+        elif job.exit_status != 0:
+            message = 'Script "%s" has failed with exit status "%s"' % (job.name, job.exit_status) 
+
+        if message:
+            room.notification(message, color=color, format='html')
 
 
 def _status_summary(num_jobs, failed):
