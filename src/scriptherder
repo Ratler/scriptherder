@@ -801,14 +801,14 @@ def hipchat_notification(args, logger, job):
         color = 'green'
         if job.exit_status != 0:
             color = 'red'
-        
+
         if job.output_filename:
             message = 'Script output for "%s" with exit status "%s":<br><code>%s</code>' % (job.name, job.exit_status, job.output)
         elif job.exit_status != 0:
-            message = 'Script "%s" has failed with exit status "%s"' % (job.name, job.exit_status) 
+            message = 'Script "%s" has failed with exit status "%s"' % (job.name, job.exit_status)
 
         if message:
-            room.notification(message, color=color, format='html')
+            room.notification(message.replace('\n', '<br>'), color=color, format='html')
 
 
 def _status_summary(num_jobs, failed):
