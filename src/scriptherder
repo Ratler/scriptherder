@@ -342,7 +342,10 @@ class Job(object):
         @rtype: Job
         """
         f = open(filename, 'r')
-        data = json.loads(f.read(100 * 1024 * 1024))
+        try:
+            data = json.loads(f.read(100 * 1024 * 1024))
+        except ValueError:
+            raise JobLoadError('JSON parsing failed', filename=filename)
         f.close()
         if data.get('version') == 1:
             self._name = data.get('name')
@@ -460,6 +463,14 @@ class Check(object):
             res = (job.end_time > (now - value))
             self.logger.debug("Evaluate criteria {!r}: ({!r} > ({!r} - {!r}) {!r}".format(
                 criteria, job.end_time, now, value, res))
+            return res
+        elif what == 'output_contains' or what == 'output_not_contains':
+            value = value.strip()
+            res = re.match(value, job.output) is not None
+            if what == 'output_not_contains':
+                res = not res  # invert result
+            self.logger.debug("Evaluate criteria {!r}: {!r} matching in {!s} bytes output: {!r}".format(
+                criteria, value, len(job.output), res))
             return res
         self.logger.debug("Evaluation of unknown criteria {!r}, defaulting to False".format(criteria))
         return False
@@ -815,7 +826,7 @@ def _status_summary(num_jobs, failed):
     """
     String format routine used in output of checks status.
     """
-    fmt = '1 job in this state: {summary}'
+    fmt = '{jobs} job in this state: {summary}'
     if len(failed) == 1:
         fmt = '{jobs}/{num_jobs} job in this state: {summary}'
 
@@ -863,7 +874,7 @@ def _parse_time_value(value):
     @type value: string
     @rtype: int
     """
-    match = re.match('^(\d+)([hmsd]*)$', value)
+    match = re.match(r'^(\d+)([hmsd]*)$', value)
     if match:
         num = int(match.group(1))
         what = match.group(2)
