@@ -51,11 +51,10 @@ import argparse
 import subprocess
 import ConfigParser
 try:
-    from hypchat import HypChat
-    import urllib
-    have_hipchat=True
+    from slacker import Slacker
+    have_slack=True
 except ImportError:
-    have_hipchat=False
+    have_slack=False
 
 _defaults = {'debug': False,
              'syslog': False,
@@ -658,14 +657,18 @@ def parse_args(defaults):
                         help = 'Job name',
                         metavar = 'NAME',
                         )
-    if have_hipchat:
-        parser.add_argument('-H', '--hipchat',
-                            dest = 'hipchat',
-                            help = 'HipChat token (enabled hipchat notification)',
+    if have_slack:
+        parser.add_argument('-S', '--slack-token',
+                            dest = 'slack',
+                            help = 'Slack token (enable slack notification)',
                             )
         parser.add_argument('-r', '--room',
-                            dest = 'hipchat_room',
-                            help = 'HipChat room to send notifications to',
+                            dest = 'slack_room',
+                            help = 'Slack room to send notifications to',
+                            )
+        parser.add_argument('-u', '--user',
+                            dest = 'slack_username',
+                            help = 'Post as username on slack',
                             )
 
     parser.add_argument('cmd',
@@ -692,8 +695,8 @@ def mode_wrap(args, logger):
     logger.debug("Finished, exit status {!r}".format(job.exit_status))
     logger.debug("Job output:\n{!s}".format(job.output))
     job.save_to_file(args.datadir, logger)
-    if have_hipchat:
-        hipchat_notification(args, logger, job)
+    if have_slack:
+        slack_notification(args, logger, job)
     return True
 
 
@@ -805,21 +808,34 @@ def mode_lastlog(args, logger, fail_status=False):
         print "No jobs found"
 
 
-def hipchat_notification(args, logger, job):
-    if args.hipchat and args.hipchat_room:
-        hc = HypChat(args.hipchat)
-        room = hc.get_room(args.hipchat_room)
-        color = 'green'
+def slack_notification(args, logger, job):
+    if args.slack and args.slack_room:
+        slack = Slacker(args.slack)
+        room = args.slack_room
+        color = '#00FF00'
         if job.exit_status != 0:
-            color = 'red'
+            color = '#FF0000'
 
         if job.output_filename:
-            message = 'Script output for "%s" with exit status "%s":<br><code>%s</code>' % (job.name, job.exit_status, job.output)
+            message = [{
+                'color': color,
+                'pretext': 'Script output for "%s" with exit status "%s"' % (job.name, job.exit_status),
+                'text': '```%s```' % job.output,
+                'mrkdwn_in': ["text"]
+            }]
         elif job.exit_status != 0:
-            message = 'Script "%s" has failed with exit status "%s"' % (job.name, job.exit_status)
+            message = [{
+                'color': color,
+                'text': 'Script "%s" has failed with exit status "%s"' % (job.name, job.exit_status),
+                'mrkdwn_in': ['text']
+            }]
 
         if message:
-            room.notification(message.replace('\n', '<br>'), color=color, format='html')
+            user = None
+            if args.slack_username:
+                user = args.slack_username
+
+            slack.chat.post_message(room, '', as_user=user, attachments=message)
 
 
 def _status_summary(num_jobs, failed):
